@@ -32,7 +32,8 @@ class PenDetailsService {
                     penId INTEGER PRIMARY KEY AUTOINCREMENT,
                     headCount INTEGER,
                     date TEXT,
-                    bunkScore INTEGER
+                    bunkScore INTEGER,
+                    syncStatus TEXT DEFAULT 'not-synced' NOT NULL
                 );`,
         [],
         () => {
@@ -45,10 +46,10 @@ class PenDetailsService {
 
   public fetchAllPenDetails(): Promise<PenDetails[]> {
     return new Promise((resolve, reject) => {
-      // if (!this.db) {
-      //   reject('Database not initialized');
-      //   return;
-      // }
+      if (!this.db) {
+        reject('Database not initialized');
+        return;
+      }
       this.db?.transaction(tx => {
         tx.executeSql(
           `SELECT * FROM pen_details;`,
@@ -62,7 +63,7 @@ class PenDetailsService {
                 headCount: row.headCount,
                 date: new Date(row.date),
                 bunkScore: row.bunkScore,
-                syncStatus: SyncStatus.Synced,
+                syncStatus: row.syncStatus as SyncStatus,
               };
               penDetails.push(penDetail);
             }
@@ -86,12 +87,13 @@ class PenDetailsService {
       }
       this.db.transaction(tx => {
         tx.executeSql(
-          `INSERT INTO pen_details (headCount, date, bunkScore)
-                VALUES (?, ?, ?);`,
+          `INSERT INTO pen_details (headCount, date, bunkScore, syncStatus)
+                VALUES (?, ?, ?, ?);`,
           [
             penDetails.headCount,
             penDetails.date.toISOString(),
             penDetails.bunkScore,
+            penDetails.syncStatus,
           ],
           () => {
             resolve(tx);
@@ -106,7 +108,29 @@ class PenDetailsService {
     });
   }
 
-  
+  public updateSyncStatus(): void {
+    new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject('Database not initialized');
+        return;
+      }
+      this.db.transaction(tx => {
+        tx.executeSql(
+          `UPDATE pen_details SET syncStatus = ? WHERE syncStatus = ?;`,
+          [SyncStatus.Synced, SyncStatus.NotSynced],
+          () => {
+            resolve(tx);
+            console.log('Sync status updated successfully');
+          },
+          error => {
+            reject(error);
+            console.log('Error updating sync status:', error);
+          },
+        );
+      });
+    });
+  }
+
   public deletePenDetails(penId: number): void {
     new Promise((resolve, reject) => {
       if (!this.db) {
@@ -138,13 +162,14 @@ class PenDetailsService {
       }
       this.db.transaction(tx => {
         tx.executeSql(
-          `UPDATE pen_details SET headCount = ?, date = ?, bunkScore = ?
+          `UPDATE pen_details SET headCount = ?, date = ?, bunkScore = ?, syncStatus = ?
                 WHERE penId = ?;`,
           [
             penDetails.headCount,
             penDetails.date.toISOString(),
             penDetails.bunkScore,
             penDetails.penId,
+            penDetails.syncStatus,
           ],
           () => {
             resolve(tx);
